@@ -2,4 +2,5 @@ host: localhost
 
 salesforce:
   username: "jaistaneja43@gmail.com"
+  url : "https://login.salesforce.com/services/Soap/u/52.0"
   

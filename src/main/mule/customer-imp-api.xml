@@ -46,7 +46,7 @@ var serverDateTime = GenerateCosmosDBAuthToken::getServerTime() as String
 	"Authorization" : vars.cosmosHeader.authKey,
 	"Accept" : "application/json",
 	"x-ms-version" : "2016-07-11",
-	"x-ms-documentdb-partitionkey" : '["' ++ payload.department ++ '"]',
+	"x-ms-documentdb-partitionkey" : '["' ++ payload.firstName ++ '"]',
 	"Content-Type" : "application/json",
 	"x-ms-date" : vars.cosmosHeader.serverDateTime
 }]]]></http:headers>
@@ -85,12 +85,12 @@ attributes.queryParams.customerId]]></ee:set-variable>
 output application/json
 ---
 payload map {
- "customerId": payload.customerId__c default "",
-  "firstName": payload.firstName default "",
-  "lastName": payload.lastName__c default "",
-  "companyName": payload.Name default "",
-  "email": payload.email__c default "",
-  "phone": payload.Phone default ""
+  "customerId": payload[0].customerId__c default "",
+  "firstName": payload[0].firstName__c default "",
+  "lastName": payload[0].lastName__c default "",
+  "companyName": payload[0].Name default "",
+  "email": payload[0].email__c default "",
+  "phone": payload[0].Phone default ""
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>

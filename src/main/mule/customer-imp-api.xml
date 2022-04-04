@@ -115,7 +115,7 @@ payload map {
 output application/json
 ---
 [{
-  "customerId__c": payload.customerId,
+  "customerId__c": if (!isBlank(payload.customerId)) payload.customerId else uuid(),
   "firstName__c": payload.firstName,
   "lastName__c": payload.lastName,
   "Name": payload.companyName,
@@ -124,6 +124,8 @@ output application/json
 }]]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
+		<set-variable value="#[payload[0].customerId__c]" doc:name="Set Variable" doc:id="7fbeed83-5620-4aed-a60e-94fee2ac1145" variableName="customerId"/>
+		<logger level="INFO" doc:name="Logger" doc:id="3ca3c9a2-78b2-4cde-b211-d494f77053c9" message='#[message : "Customer details Upserted successfully with customerId: " ++ vars.customerId]'/>
 		<salesforce:upsert objectType="Account" doc:name="Upsert" doc:id="292629e5-910d-495d-9859-8561a77e23ad" config-ref="Salesforce_Config" externalIdFieldName="customerId__c"/>
 		<ee:transform doc:name="setResponse" doc:id="86b93b89-e2d0-43d1-bc5b-215c1f5f48fa" >
 			<ee:message >
@@ -131,7 +133,7 @@ output application/json
 output application/json
 ---
 {
-	message : "Customer details Upserted successfully"
+	message : "Customer details Upserted successfully with customerId: " ++ vars.customerId
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>

@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="2584dd48-cb2c-4037-99c9-67f3eea0040e" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="eeb9aa3b-cd1c-413b-b152-7ba521788fb7" >
+		<http:request-connection protocol="HTTPS" host="mulesydb.documents.azure.com" port="443" />
+	</http:request-config>
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="a3c7ebee-04df-42d1-b778-843922ac5e8b" >
+		<salesforce:basic-connection username="jaistaneja43@gmail.com" password="Salesforce@143" securityToken="WsRFPtP1JOlMzr2bZ0Up5dbs" url="https://login.salesforce.com/services/Soap/u/52.0" />
+	</salesforce:sfdc-config>
+	<sub-flow name="cosmosDbSubFlow" doc:id="ef7e54dc-21ec-48d3-8c8b-04e0ac4b7034" >
+		<ee:transform doc:name="Set AuthKey" doc:id="9103bb8e-0ff1-49b6-9e2f-6c65b5fd188c">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="cosmosHeader"><![CDATA[%dw 2.0
+import java!cosmosdb::GenerateCosmosDBAuthToken
+output application/java
+var verb = "POST"
+var resourceType = "docs" 
+var resourceId = "dbs/SampleDB/colls/Persons/docs"
+var key = "G00V0iR85NhLmL7jHFv9hRs8B3POOObdPuUFfUHzYhu9RpM6OJa0nG63n66JbmbCcF3hQHfDIl5Uw2HKffCslg=="
+var keyType = "master"
+var tokenVersion = "1.0"
+var serverDateTime = GenerateCosmosDBAuthToken::getServerTime() as String
+---
+{
+	serverDateTime: serverDateTime,
+	authKey: GenerateCosmosDBAuthToken::generate(verb, resourceType, resourceId, key, keyType, tokenVersion, serverDateTime)
+}
+]]></ee:set-variable>
+			
+</ee:variables>
+		</ee:transform>
+		<http:request method="POST" doc:name="Cosmos DB API for SQL insert" doc:id="d1b8eda4-8576-48b2-ab08-c27bfa422779" config-ref="HTTP_Request_configuration" path="dbs/hr/colls/employee/docs">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.cosmosHeader.authKey,
+	"Accept" : "application/json",
+	"x-ms-version" : "2016-07-11",
+	"x-ms-documentdb-partitionkey" : '["' ++ payload.firstName ++ '"]',
+	"Content-Type" : "application/json",
+	"x-ms-date" : vars.cosmosHeader.serverDateTime
+}]]]></http:headers>
+		</http:request>
+		<ee:transform doc:name="setPayload" doc:id="970abf90-7db7-4900-be65-d35820468650" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	message : "Customer details Upserted successfully"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="cosmosDbSubFlow" doc:id="a7c8792a-d617-48f9-a112-65b7776e0447" message="cosmosDbSubFlow Ended." />
+	</sub-flow>
+	<sub-flow name="getCustomerDetailsSubFlow" doc:id="23cffac1-16c0-44cd-972c-a146d656f2c9" >
+		<logger level="INFO" doc:name="logFlowStarted" doc:id="05dbad59-de79-4309-abfe-bfee6e5a25fa" message="Started getCustomerDetailsSubFlow....."/>
+		<ee:transform doc:name="setCustomerId" doc:id="e9a5be1f-1c08-4dbd-909c-76e3db8a0aa8" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="customerId" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams.customerId]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="logCustomerId" doc:id="007b16a5-a0a9-45c4-b4ea-18d3593fa131" message='Fetch CustomerDetails for CustomerId #[vars.customerId default ""]'/>
+		<salesforce:query doc:name="getCustomerDetailsFromSF" doc:id="f905afe2-1bab-4ff4-8861-f7755e6f47d4" config-ref="Salesforce_Config">
+			<salesforce:salesforce-query ><![CDATA[select customerId__c,firstName__c,lastName__c,Name,email__c,Phone from Account where customerId__c = ':customerId']]></salesforce:salesforce-query>
+			<salesforce:parameters ><![CDATA[#[customerId : vars.customerId]]]></salesforce:parameters>
+		</salesforce:query>
+		<ee:transform doc:name="Transform Message" doc:id="44ae7bd2-4429-4a10-9c49-e0f899dd2899" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload map {
+  "customerId": payload[0].customerId__c default "",
+  "firstName": payload[0].firstName__c default "",
+  "lastName": payload[0].lastName__c default "",
+  "companyName": payload[0].Name default "",
+  "email": payload[0].email__c default "",
+  "phone": payload[0].Phone default ""
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="logFlowEnded" doc:id="52e5040d-d518-4d13-b3cc-89ae90c35ce3" message="getCustomerDetailsSubFlow Ended."/>
+	</sub-flow>
+	<sub-flow name="UpsertCustomerDetailsSubFlow" doc:id="cc682235-37ed-4d05-b434-cbb00ba16ff8" >
+		<logger level="INFO" doc:name="Logger" doc:id="e2cf8b56-7c61-4bf3-874a-389754874bfd" message="Upserting Customer Data"/>
+		<choice doc:name="Choice" doc:id="a234b704-112f-4a4e-a02f-9616d4b12774">
+			<when expression="#[sizeOf(payload) &gt; 3]">
+				<flow-ref doc:name="upsertDataIntoSalesforce" doc:id="4e02cd1b-daf0-4159-82f3-854ae0af8cec" name="upsertDataIntoSalesforce"/>
+			</when>
+			<otherwise >
+				<flow-ref doc:name="cosmosDbSubFlow" doc:id="d6385f2b-fca7-4b55-af3f-412e69c845e6" name="cosmosDbSubFlow" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="upsertDataIntoSalesforce" doc:id="01958c27-3eb1-4624-bcec-7f3dbbbb2483" >
+		<logger level="INFO" doc:name="logFlowStarted" doc:id="cd5c5cf8-d9bc-4a47-8127-b69dfbe4d6ec" message="upsertDataIntoSalesforceSubFlow Started..."/>
+		<ee:transform doc:name="setPayload" doc:id="6ab43f8b-d110-4f3b-aa51-35b4051df2d4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+[{
+  "customerId__c": payload.customerId,
+  "firstName__c": payload.firstName,
+  "lastName__c": payload.lastName,
+  "Name": payload.companyName,
+  "email__c": payload.email,
+  "Phone": payload.phone
+}]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<salesforce:upsert objectType="Account" doc:name="Upsert" doc:id="292629e5-910d-495d-9859-8561a77e23ad" config-ref="Salesforce_Config" externalIdFieldName="customerId__c"/>
+		<ee:transform doc:name="setResponse" doc:id="86b93b89-e2d0-43d1-bc5b-215c1f5f48fa" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	message : "Customer details Upserted successfully"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="logFlowEnded" doc:id="16aa298b-e933-464d-bfc9-f58f76f694fb" message="upsertDataIntoSalesforce flow ended"/>
+	</sub-flow>
+</mule>

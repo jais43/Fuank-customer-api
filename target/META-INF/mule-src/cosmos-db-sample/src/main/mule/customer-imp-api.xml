@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="2584dd48-cb2c-4037-99c9-67f3eea0040e" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="eeb9aa3b-cd1c-413b-b152-7ba521788fb7" >
+		<http:request-connection protocol="HTTPS" host="mulesydb.documents.azure.com" port="443" />
+	</http:request-config>
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="a3c7ebee-04df-42d1-b778-843922ac5e8b" >
+		<salesforce:basic-connection username="jaistaneja43@gmail.com" password="Salesforce@123" securityToken="WsRFPtP1JOlMzr2bZ0Up5dbs" url="https://login.salesforce.com/services/Soap/u/47.0" />
+	</salesforce:sfdc-config>
+	<sub-flow name="cosmosDbSubFlow" doc:id="ef7e54dc-21ec-48d3-8c8b-04e0ac4b7034" >
+		<ee:transform doc:name="Set AuthKey" doc:id="9103bb8e-0ff1-49b6-9e2f-6c65b5fd188c">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="cosmosHeader"><![CDATA[%dw 2.0
+import java!cosmosdb::GenerateCosmosDBAuthToken
+output application/java
+var verb = "POST"
+var resourceType = "docs" 
+var resourceId = "dbs/hr/colls/employee"
+var key = "0SZd1Zs3hySH915hKBTQCbewWnzIEI4S2YK8yHDaRwMrnzrZSwaa0hHy8IW21x4qbsQoswWIh3FW8TOd0fpSYw=="
+var keyType = "master"
+var tokenVersion = "1.0"		 
+var serverDateTime = GenerateCosmosDBAuthToken::getServerTime() as String
+---
+{
+	serverDateTime: serverDateTime,
+	authKey: GenerateCosmosDBAuthToken::generate(verb, resourceType, resourceId, key, keyType, tokenVersion, serverDateTime)
+}
+]]></ee:set-variable>
+			
+</ee:variables>
+		</ee:transform>
+		<http:request method="POST" doc:name="Cosmos DB API for SQL insert" doc:id="d1b8eda4-8576-48b2-ab08-c27bfa422779" config-ref="HTTP_Request_configuration" path="dbs/hr/colls/employee/docs">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Accept" : "application/json",
+	"x-ms-version" : "2016-07-11",
+	"Authorization" : vars.cosmosHeader.authKey,
+	"x-ms-date" : vars.cosmosHeader.serverDateTime,
+	"Content-Type" : "application/json",
+	"x-ms-documentdb-partitionkey" : '["' ++ payload.department ++ '"]'
+}]]]></http:headers>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" doc:id="a7c8792a-d617-48f9-a112-65b7776e0447" message="Success" />
+	</sub-flow>
+	<flow name="getCustomerDataFlow" doc:id="958bb7d4-d533-47fc-8264-59566b25964f" >
+		<http:listener doc:name="Listener" doc:id="71b78f42-6407-43f1-afc7-a4634b77874b" config-ref="HTTP_Listener_config" path="/getcustomerdetails" allowedMethods="GET"/>
+		<ee:transform doc:name="setCustomerId" doc:id="ab6d292a-a3d0-4eeb-8aea-c138f399a522" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="customerId" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams.customerId]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="c386864c-8798-4d1d-8588-809d61caf8a7" >
+			<when expression="#[!isBlank(vars.customerId)]">
+				<logger level="INFO" doc:name="Logger" doc:id="5d8f7faf-f2ac-4842-961f-217ced621b8b" message='Getting CustomerDetails for CustomerId #[vars.customerId default ""]'/>
+				<salesforce:query doc:name="Query" doc:id="9c1aefc3-29e8-4e0e-9ef1-0ba57825b778" config-ref="Salesforce_Config">
+					<salesforce:salesforce-query ><![CDATA[select customerId__c from Customer]]></salesforce:salesforce-query>
+				</salesforce:query>
+			</when>
+		</choice>
+	</flow>
+	<flow name="upsertCustomerDataFlow" doc:id="ff5eb063-b98f-40c4-be03-8e1ca66e1728" >
+		<http:listener doc:name="Listener" doc:id="f539fd66-d565-4828-ad64-1620116dd842" config-ref="HTTP_Listener_config" path="/customer" allowedMethods="POST"/>
+		<choice doc:name="Choice" doc:id="a234b704-112f-4a4e-a02f-9616d4b12774" >
+			<when expression="#[sizeOf(payload) &gt; 1]">
+				<flow-ref doc:name="cosmosDbSubFlow" doc:id="d6385f2b-fca7-4b55-af3f-412e69c845e6" name="cosmosDbSubFlow"/>
+			</when>
+		</choice>
+		<flow-ref doc:name="Flow Reference" doc:id="8d3288e5-95cb-49bf-9c9a-35708567bfe2" name="cosmosDbSubFlow" />
+	
+</flow>
+</mule>
